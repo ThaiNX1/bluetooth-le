@@ -602,7 +602,7 @@ class Device(
                 }
             }
         } else {
-            Log.i("BluetoothLE", "Skipping descriptor write as requested.")
+            //  Log.i("BluetoothLE", "Skipping descriptor write as requested.")
             resolve(key,"")
       }
         // wait for onDescriptorWrite
