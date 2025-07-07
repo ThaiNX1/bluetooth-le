@@ -2,9 +2,9 @@
   "name": "@thainx/bluetooth-le",
   "version": "7.1.1",
   "description": "Capacitor plugin for Bluetooth Low Energy ",
-  "main": "dist/plugin.js",
+  "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
-  "types": "dist/esm/definitions.d.ts",
+  "types": "dist/esm/index.d.ts",
   "unpkg": "dist/plugin.js",
   "scripts": {
     "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",
