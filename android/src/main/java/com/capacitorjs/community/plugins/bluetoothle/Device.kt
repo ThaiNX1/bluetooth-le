@@ -545,6 +545,7 @@ class Device(
         serviceUUID: UUID,
         characteristicUUID: UUID,
         enable: Boolean,
+        skipWriteDescriptor: Boolean = false,
         notifyCallback: ((CallbackResponse) -> Unit)?,
         callback: (CallbackResponse) -> Unit,
     ) {
@@ -568,7 +569,7 @@ class Device(
         }
 
         val descriptor = characteristic.getDescriptor(UUID.fromString(CLIENT_CHARACTERISTIC_CONFIG))
-        if (descriptor == null) {
+        if (descriptor == null && !skipWriteDescriptor) {
             reject(key, "Setting notification failed.")
             return
         }
@@ -585,21 +586,25 @@ class Device(
             BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val statusCode = bluetoothGatt?.writeDescriptor(descriptor, value)
-            if (statusCode != BluetoothStatusCodes.SUCCESS) {
-                reject(key, "Setting notification failed with status code $statusCode.")
-                return
+        if (!skipWriteDescriptor) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val statusCode = bluetoothGatt?.writeDescriptor(descriptor, value)
+                if (statusCode != BluetoothStatusCodes.SUCCESS) {
+                    reject(key, "Setting notification failed with status code $statusCode.")
+                    return
+                }
+            } else {
+                descriptor.value = value
+                val resultDesc = bluetoothGatt?.writeDescriptor(descriptor)
+                if (resultDesc != true) {
+                    reject(key, "Setting notification failed.")
+                    return
+                }
             }
         } else {
-            descriptor.value = value
-            val resultDesc = bluetoothGatt?.writeDescriptor(descriptor)
-            if (resultDesc != true) {
-                reject(key, "Setting notification failed.")
-                return
-            }
-
-        }
+            Log.i("BluetoothLE", "Skipping descriptor write as requested.")
+            resolve(key,"")
+      }
         // wait for onDescriptorWrite
     }
 

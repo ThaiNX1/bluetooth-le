@@ -757,7 +757,7 @@ class BluetoothLe : Plugin() {
     fun startNotifications(call: PluginCall) {
         val device = getDevice(call) ?: return
         val characteristic = getCharacteristic(call) ?: return
-        device.setNotifications(characteristic.first, characteristic.second, true, { response ->
+        device.setNotifications(characteristic.first, characteristic.second, true,true, { response ->
             run {
                 val key =
                     "notification|${device.getId()}|${(characteristic.first)}|${(characteristic.second)}"
@@ -785,7 +785,7 @@ class BluetoothLe : Plugin() {
         val device = getDevice(call) ?: return
         val characteristic = getCharacteristic(call) ?: return
         device.setNotifications(
-            characteristic.first, characteristic.second, false, null
+            characteristic.first, characteristic.second, false,true, null
         ) { response ->
             run {
                 if (response.success) {
