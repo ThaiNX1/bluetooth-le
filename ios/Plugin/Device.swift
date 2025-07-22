@@ -143,7 +143,9 @@ class Device: NSObject, CBPeripheralDelegate {
     ) -> CBCharacteristic? {
         for service in peripheral.services ?? [] {
             if service.uuid == serviceUUID {
+                log("Service found: \(serviceUUID.uuid)")
                 for characteristic in service.characteristics ?? [] {
+                    log("Characteristic found: \(characteristicUUID.uuid), properties: \(characteristic.properties.r)")
                     if characteristic.uuid == characteristicUUID {
                         return characteristic
                     }
