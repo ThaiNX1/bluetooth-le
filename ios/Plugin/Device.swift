@@ -332,13 +332,43 @@ class Device: NSObject, CBPeripheralDelegate {
         if notifyCallback != nil {
             self.callbackMap[notifyKey] = notifyCallback
         }
-        guard let characteristic = self.getCharacteristic(serviceUUID, characteristicUUID) else {
-            self.reject(key, "Characteristic not found.")
+        // Ensure peripheral is connected
+        guard self.peripheral.state == .connected else {
+            self.reject(key, "Peripheral not connected. State: \(self.peripheral.state)")
             return
         }
+        
+        // Get service first
+        guard let service = self.peripheral.services?.first(where: { $0.uuid == serviceUUID }) else {
+            self.reject(key, "Service not found. Available services: \(self.peripheral.services?.map { $0.uuid.uuidString } ?? [])")
+            return
+        }
+        
+        // Get characteristic from service
+        guard let characteristic = service.characteristics?.first(where: { $0.uuid == characteristicUUID }) else {
+            self.reject(key, "Characteristic not found. Available characteristics: \(service.characteristics?.map { $0.uuid.uuidString } ?? [])")
+            return
+        }
+        
         log("Set notifications", enable)
-        log("Characteristic properties: \(characteristic.properties)")
-        log("Peripheral state: \(self.peripheral.state.rawValue)")
+        log("Service UUID: \(service.uuid)")
+        log("Characteristic UUID: \(characteristic.uuid)")
+        log("Characteristic properties: \(characteristic.properties) (raw: \(characteristic.properties.rawValue))")
+        
+        // Check if characteristic supports notifications or indications
+        let supportsNotify = characteristic.properties.contains(.notify)
+        let supportsIndicate = characteristic.properties.contains(.indicate)
+        log("Supports notify: \(supportsNotify), indicate: \(supportsIndicate)")
+        
+        if !supportsNotify && !supportsIndicate {
+            self.reject(key, "Characteristic does not support notifications or indications")
+            return
+        }
+        
+        // Check if characteristic is notifying (current state)
+        log("Current isNotifying state: \(characteristic.isNotifying)")
+        
+        log("About to call setNotifyValue(\(enable))...")
         self.peripheral.setNotifyValue(enable, for: characteristic)
         self.setTimeout(key, "Set notifications timeout.", timeout)
     }
