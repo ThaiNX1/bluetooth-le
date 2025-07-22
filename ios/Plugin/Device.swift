@@ -335,6 +335,8 @@ class Device: NSObject, CBPeripheralDelegate {
             return
         }
         log("Set notifications", enable)
+        log("Characteristic properties: \(characteristic.properties)")
+        log("Peripheral state: \(self.peripheral.state.rawValue)")
         self.peripheral.setNotifyValue(enable, for: characteristic)
         self.setTimeout(key, "Set notifications timeout.", timeout)
     }
@@ -346,6 +348,7 @@ class Device: NSObject, CBPeripheralDelegate {
     ) {
         let key = self.getKey("setNotifications", characteristic)
         if error != nil {
+            log("didUpdateNotificationStateFor: \(String(describing: error))")
             self.reject(key, error!.localizedDescription)
             return
         }
