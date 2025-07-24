@@ -102,7 +102,11 @@ class Device: NSObject, CBPeripheralDelegate {
                 log("Found target characteristic: \(targetCharacteristicUUID.uuidString), setting notification: \(pendingNotificationEnable)")
             
                 // Set up notification for this characteristic
-                peripheral.setNotifyValue(pendingNotificationEnable, for: characteristic)
+                // peripheral.setNotifyValue(pendingNotificationEnable, for: characteristic)
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    peripheral.setNotifyValue(pendingNotificationEnable, for: characteristic)
+                }
             
                 // Reset the target UUIDs
                 // self.targetServiceUUID = nil
@@ -405,6 +409,7 @@ class Device: NSObject, CBPeripheralDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             if self.notificationPending[key] == true {
                 self.notificationPending[key] = false
+                log("Set notifications timeout for key: \(key)")
                 self.reject(key, "Set notifications timeout.")
             }
         }
