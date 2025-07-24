@@ -72,14 +72,14 @@ class Device: NSObject, CBPeripheralDelegate {
         }
 
         // Logic để tìm service mục tiêu cho thông báo
-        // if let serviceUUID = targetServiceUUID,
-        //    let characteristicUUID = targetCharacteristicUUID,
-        //    let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) {
+        if let serviceUUID = targetServiceUUID,
+           let characteristicUUID = targetCharacteristicUUID,
+           let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) {
 
-        //     log("Found target service: \(serviceUUID.uuidString), discovering characteristics...")
-        //     // Chỉ khám phá đặc tính mục tiêu thay vì tất cả
-        //     peripheral.discoverCharacteristics([characteristicUUID], for: service)
-        // } else {
+            log("Found target service: \(serviceUUID.uuidString), discovering characteristics...")
+            // Chỉ khám phá đặc tính mục tiêu thay vì tất cả
+            peripheral.discoverCharacteristics([characteristicUUID], for: service)
+        } else {
             // Hành vi ban đầu để khám phá tất cả các service và đặc tính
             // Cân nhắc liệu bạn có cần khám phá tất cả nếu chỉ muốn set notifications
             self.servicesCount = peripheral.services?.count ?? 0
@@ -90,7 +90,7 @@ class Device: NSObject, CBPeripheralDelegate {
             for service in peripheral.services ?? [] {
                 peripheral.discoverCharacteristics(nil, for: service) // Khám phá tất cả đặc tính cho mỗi service
             }
-        // }
+        }
     }
 
     func peripheral(
