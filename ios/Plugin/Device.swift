@@ -326,8 +326,8 @@ class Device: NSObject, CBPeripheralDelegate {
         _ timeout: Double,
         _ callback: @escaping Callback
     ) {
-        let key = "setNotifications|\(serviceUUID.uuidString)|\(characteristicUUID.uuidString)"
-        let notifyKey = "notification|\(serviceUUID.uuidString)|\(characteristicUUID.uuidString)"
+        let key = "setNotifications|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
+        let notifyKey = "notification|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
         self.callbackMap[key] = callback
         if notifyCallback != nil {
             self.callbackMap[notifyKey] = notifyCallback
