@@ -12,12 +12,13 @@ class Device: NSObject, CBPeripheralDelegate {
     private var servicesDiscovered = 0
     private var characteristicsCount = 0
     private var characteristicsDiscovered = 0
-    // Add these properties to your Device class
+
+    // Các thuộc tính được thêm vào để xử lý thông báo cụ thể
     private var targetServiceUUID: CBUUID?
     private var targetCharacteristicUUID: CBUUID?
     private var pendingNotificationEnable: Bool = false
     // Thêm biến kiểm soát trạng thái notify pending
-    private var notificationPending = [String: Bool]()
+    private var notificationPending = [String: Bool]() // Dùng để theo dõi yêu cầu notify đang chờ
 
     init(
         _ peripheral: CBPeripheral
@@ -52,31 +53,42 @@ class Device: NSObject, CBPeripheralDelegate {
         self.setTimeout(key, "Connection timeout", connectionTimeout)
     }
 
+    // MARK: - CBPeripheralDelegate Methods
+
     func peripheral(
         _ peripheral: CBPeripheral,
         didDiscoverServices error: Error?
     ) {
         log("Discovered services: \(peripheral.services?.map { $0.uuid.uuidString } ?? [])")
         if error != nil {
-            log("Error", error!.localizedDescription)
+            log("Error discovering services: \(error!.localizedDescription)")
+            // Cần reject callback nếu có lỗi
+            if let serviceUUID = targetServiceUUID, let characteristicUUID = targetCharacteristicUUID {
+                let key = "setNotifications|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
+                self.reject(key, "Service discovery failed: \(error!.localizedDescription)")
+                self.notificationPending[key] = false // Clear pending state on error
+            }
             return
         }
-        // If we're looking for a specific service to set up notifications
-        if  let serviceUUID = targetServiceUUID,
-            let characteristicUUID = targetCharacteristicUUID,
-            let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) {
-        
+
+        // Logic để tìm service mục tiêu cho thông báo
+        if let serviceUUID = targetServiceUUID,
+           let characteristicUUID = targetCharacteristicUUID,
+           let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) {
+
             log("Found target service: \(serviceUUID.uuidString), discovering characteristics...")
+            // Chỉ khám phá đặc tính mục tiêu thay vì tất cả
             peripheral.discoverCharacteristics([characteristicUUID], for: service)
         } else {
-            // Original behavior for general service discovery
+            // Hành vi ban đầu để khám phá tất cả các service và đặc tính
+            // Cân nhắc liệu bạn có cần khám phá tất cả nếu chỉ muốn set notifications
             self.servicesCount = peripheral.services?.count ?? 0
             self.servicesDiscovered = 0
             self.characteristicsCount = 0
             self.characteristicsDiscovered = 0
-        
+
             for service in peripheral.services ?? [] {
-                peripheral.discoverCharacteristics(nil, for: service)
+                peripheral.discoverCharacteristics(nil, for: service) // Khám phá tất cả đặc tính cho mỗi service
             }
         }
     }
@@ -87,48 +99,58 @@ class Device: NSObject, CBPeripheralDelegate {
         error: Error?
     ) {
         if let error = error {
-            log("Error discovering characteristics: \(error.localizedDescription)")
+            log("Error discovering characteristics for service \(service.uuid.uuidString): \(error.localizedDescription)")
+            // Cần reject callback nếu có lỗi
+            if let serviceUUID = targetServiceUUID, let characteristicUUID = targetCharacteristicUUID {
+                let key = "setNotifications|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
+                self.reject(key, "Characteristic discovery failed: \(error.localizedDescription)")
+                self.notificationPending[key] = false // Clear pending state on error
+            }
             return
         }
-    
+
         log("Discovered characteristics for service \(service.uuid.uuidString): \(service.characteristics?.map { $0.uuid.uuidString } ?? [])")
-    
-        // Check if this is the service we're interested in for notifications
+
+        // Kiểm tra xem đây có phải là service mà chúng ta quan tâm để thiết lập thông báo không
         if let targetServiceUUID = targetServiceUUID,
            let targetCharacteristicUUID = targetCharacteristicUUID,
            service.uuid == targetServiceUUID {
-        
+
             if let characteristic = service.characteristics?.first(where: { $0.uuid == targetCharacteristicUUID }) {
                 log("Found target characteristic: \(targetCharacteristicUUID.uuidString), setting notification: \(pendingNotificationEnable)")
-            
-                // Set up notification for this characteristic
-                // peripheral.setNotifyValue(pendingNotificationEnable, for: characteristic)
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    peripheral.setNotifyValue(self.pendingNotificationEnable, for: characteristic)
-                }
-            
-                // Reset the target UUIDs
-                // self.targetServiceUUID = nil
-                // self.targetCharacteristicUUID = nil
-                return
+
+                // Loại bỏ delay không cần thiết này. setNotifyValue nên được gọi ngay lập tức.
+                // DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                peripheral.setNotifyValue(self.pendingNotificationEnable, for: characteristic)
+                // }
+
+                // RẤT QUAN TRỌNG: Reset các UUID mục tiêu sau khi đã tìm thấy và thiết lập.
+                // Nếu không, các cuộc gọi setNotifications tiếp theo có thể bị ảnh hưởng bởi các giá trị cũ.
+                self.targetServiceUUID = nil
+                self.targetCharacteristicUUID = nil
+                return // Tránh chạy logic khám phá chung nếu đây là mục tiêu cụ thể
             } else {
-                log("Target characteristic \(targetCharacteristicUUID.uuidString) not found")
+                log("Target characteristic \(targetCharacteristicUUID.uuidString) not found in service \(service.uuid.uuidString)")
+                // Reject callback nếu không tìm thấy đặc tính mục tiêu
+                let key = "setNotifications|\(targetServiceUUID.uuidString.lowercased())|\(targetCharacteristicUUID.uuidString.lowercased())"
+                self.reject(key, "Target characteristic not found.")
+                self.notificationPending[key] = false // Clear pending state on error
             }
         }
-    
-        // Original behavior for general characteristic discovery
+
+        // Hành vi ban đầu cho việc khám phá đặc tính chung
         self.servicesDiscovered += 1
         self.characteristicsCount += service.characteristics?.count ?? 0
-    
+
         for characteristic in service.characteristics ?? [] {
             peripheral.discoverDescriptors(for: characteristic)
         }
-    
-        // If this was the last service, resolve the connection
+
+        // Nếu đây là service cuối cùng, giải quyết kết nối (hoặc discoverServices)
+        // Cần xem xét lại logic này nếu bạn chỉ muốn discover cho setNotifications
         if self.servicesDiscovered >= self.servicesCount && self.characteristicsDiscovered >= self.characteristicsCount {
-            // self.resolve("connect", "Connection successful.")
             self.resolve("discoverServices", "Services discovered.")
+            // self.resolve("connect", "Connection successful.") // Có thể đã được resolve bởi setOnConnected
         }
     }
 
@@ -137,6 +159,7 @@ class Device: NSObject, CBPeripheralDelegate {
         didDiscoverDescriptorsFor characteristic: CBCharacteristic,
         error: Error?
     ) {
+        // Logic này chủ yếu cho việc khám phá chung, không trực tiếp cho setNotifications
         self.characteristicsDiscovered += 1
         if self.servicesDiscovered >= self.servicesCount && self.characteristicsDiscovered >= self.characteristicsCount {
             self.resolve("connect", "Connection successful.")
@@ -191,6 +214,8 @@ class Device: NSObject, CBPeripheralDelegate {
         _ serviceUUID: CBUUID,
         _ characteristicUUID: CBUUID
     ) -> CBCharacteristic? {
+        // Nên đảm bảo services đã được khám phá trước khi gọi hàm này
+        // Hoặc thêm logic khám phá nếu chưa có
         for service in peripheral.services ?? [] {
             if service.uuid == serviceUUID {
                 log("Service found: \(service.uuid)")
@@ -373,46 +398,51 @@ class Device: NSObject, CBPeripheralDelegate {
         _ characteristicUUID: CBUUID,
         _ enable: Bool,
         _ notifyCallback: Callback?,
-        _ timeout: Double,
-        _ callback: @escaping Callback
+        _ timeout: Double, // Timeout được truyền vào
+        _ callback: @escaping Callback // Callback cho việc thiết lập thành công/thất bại
     ) {
         let key = "setNotifications|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
         let notifyKey = "notification|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
-        // Check pending state
+
+        // Kiểm tra trạng thái pending để tránh gửi nhiều yêu cầu cùng lúc
         if notificationPending[key] == true {
             self.reject(key, "Notification request is pending for this characteristic.")
             return
         }
-        notificationPending[key] = true
+        notificationPending[key] = true // Đặt trạng thái pending
 
         log("Setting up notifications: \(enable) for service: \(serviceUUID.uuidString), characteristic: \(characteristicUUID.uuidString)")
 
-        self.callbackMap[key] = callback
+        self.callbackMap[key] = callback // Lưu callback cho việc thiết lập
         if let notifyCallback = notifyCallback {
-            self.callbackMap[notifyKey] = notifyCallback
+            self.callbackMap[notifyKey] = notifyCallback // Lưu callback cho dữ liệu notify
         }
-    
-        // Store the target UUIDs and notification state
+
+        // Lưu các UUID mục tiêu và trạng thái thông báo
         self.targetServiceUUID = serviceUUID
         self.targetCharacteristicUUID = characteristicUUID
         self.pendingNotificationEnable = enable
-    
-        // Start service discovery
+
+        // Bắt đầu khám phá service
         if peripheral.state == .connected {
             log("Starting service discovery for UUID: \(serviceUUID.uuidString)")
-            peripheral.discoverServices([serviceUUID])
+            peripheral.discoverServices([serviceUUID]) // Chỉ khám phá service mục tiêu
+            // Đặt timeout chính cho toàn bộ quá trình thiết lập thông báo
+            self.setTimeout(key, "Set notifications timeout.", timeout)
         } else {
             self.reject(key, "Peripheral is not connected. Current state: \(peripheral.state.rawValue)")
-            notificationPending[key] = false
+            notificationPending[key] = false // Clear pending state if not connected
         }
-        // Hủy pending nếu quá timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            if self.notificationPending[key] == true {
-                self.notificationPending[key] = false
-                log("Set notifications timeout for key: \(key)")
-                self.reject(key, "Set notifications timeout.")
-            }
-        }
+
+        // LOẠI BỎ KHỐI DISPATCHQUEUE.MAIN.ASYNCAFTER CÓ TIMEOUT CỐ ĐỊNH NÀY!
+        // Nó đang gây ra timeout sớm và xung đột với setTimeout chính.
+        // DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        //     if self.notificationPending[key] == true {
+        //         self.notificationPending[key] = false
+        //         log("Set notifications timeout for key: \(key)")
+        //         self.reject(key, "Set notifications timeout.")
+        //     }
+        // }
     }
 
     func peripheral(
@@ -420,7 +450,6 @@ class Device: NSObject, CBPeripheralDelegate {
         didUpdateNotificationStateFor characteristic: CBCharacteristic,
         error: Error?
     ) {
-        // Tạo key dựa trên targetServiceUUID và targetCharacteristicUUID đã lưu
         guard let serviceUUID = characteristic.service?.uuid else {
             log("Error: Service for characteristic \(characteristic.uuid.uuidString) is nil in didUpdateNotificationStateFor.")
             return
@@ -428,15 +457,22 @@ class Device: NSObject, CBPeripheralDelegate {
 
         let characteristicUUID = characteristic.uuid
         let key = "setNotifications|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
-        notificationPending[key] = false
+
+        // RẤT QUAN TRỌNG: Xóa trạng thái pending và hủy timeout ngay khi nhận được phản hồi
+        self.notificationPending[key] = false
+        self.timeoutMap[key]?.cancel() // Hủy timeout chính
+        self.timeoutMap[key] = nil
+
         if let error = error {
             self.reject(key, "Failed to update notification state: \(error.localizedDescription)")
             return
         }
-    
-        // Notification/indication set up successfully
+
+        // Thông báo/chỉ định đã được thiết lập thành công
         self.resolve(key, "Successfully set notification state to \(characteristic.isNotifying)")
     }
+
+    // MARK: - Helper Methods
 
     private func getKey(
         _ prefix: String,
@@ -505,5 +541,70 @@ class Device: NSObject, CBPeripheralDelegate {
         }
         self.timeoutMap[key] = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: workItem)
+    }
+}
+
+// Giả định các hàm này tồn tại trong cùng scope hoặc được import
+// Cần định nghĩa hoặc đảm bảo chúng có sẵn
+func log(_ items: Any...) {
+    // Implement your logging mechanism here
+    print("BluetoothLe -", items.map { "\($0)" }.joined(separator: " "))
+}
+
+func dataToString(_ data: Data) -> String {
+    // Implement your Data to String conversion
+    return data.map { String(format: "%02x", $0) }.joined()
+}
+
+func stringToData(_ string: String) -> Data {
+    // Implement your String to Data conversion
+    var data = Data()
+    var index = string.startIndex
+    while index < string.endIndex {
+        let nextIndex = string.index(index, offsetBy: 2, limitedBy: string.endIndex) ?? string.endIndex
+        let byteString = String(string[index..<nextIndex])
+        if let byte = UInt8(byteString, radix: 16) {
+            data.append(byte)
+        }
+        index = nextIndex
+    }
+    return data
+}
+
+func descriptorValueToString(_ value: Any) -> String {
+    // Implement your descriptor value to String conversion
+    if let data = value as? Data {
+        return dataToString(data)
+    } else if let number = value as? NSNumber {
+        return number.stringValue
+    } else if let string = value as? String {
+        return string
+    }
+    return "Unsupported descriptor value type"
+}
+
+func cbuuidToStringUppercase(_ uuid: CBUUID) -> String {
+    return uuid.uuidString.uppercased()
+}
+
+// Giả định ThreadSafeDictionary được định nghĩa ở đâu đó
+// Ví dụ đơn giản (cần cải thiện cho production):
+class ThreadSafeDictionary<Key: Hashable, Value> {
+    private var dictionary: [Key: Value] = [:]
+    private let queue = DispatchQueue(label: "com.yourapp.ThreadSafeDictionaryQueue", attributes: .concurrent)
+
+    subscript(key: Key) -> Value? {
+        get {
+            var value: Value?
+            queue.sync {
+                value = dictionary[key]
+            }
+            return value
+        }
+        set {
+            queue.async(flags: .barrier) {
+                self.dictionary[key] = newValue
+            }
+        }
     }
 }
