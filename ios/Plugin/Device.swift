@@ -12,6 +12,12 @@ class Device: NSObject, CBPeripheralDelegate {
     private var servicesDiscovered = 0
     private var characteristicsCount = 0
     private var characteristicsDiscovered = 0
+    // Add these properties to your Device class
+    private var targetServiceUUID: CBUUID?
+    private var targetCharacteristicUUID: CBUUID?
+    private var pendingNotificationEnable: Bool = false
+    // Thêm biến kiểm soát trạng thái notify pending
+    private var notificationPending = [String: Bool]()
 
     init(
         _ peripheral: CBPeripheral
@@ -50,17 +56,28 @@ class Device: NSObject, CBPeripheralDelegate {
         _ peripheral: CBPeripheral,
         didDiscoverServices error: Error?
     ) {
-        log("didDiscoverServices")
+        log("Discovered services: \(peripheral.services?.map { $0.uuid.uuidString } ?? [])")
         if error != nil {
             log("Error", error!.localizedDescription)
             return
         }
-        self.servicesCount = peripheral.services?.count ?? 0
-        self.servicesDiscovered = 0
-        self.characteristicsCount = 0
-        self.characteristicsDiscovered = 0
-        for service in peripheral.services ?? [] {
-            peripheral.discoverCharacteristics(nil, for: service)
+        // If we're looking for a specific service to set up notifications
+        if  let serviceUUID = targetServiceUUID,
+            let characteristicUUID = targetCharacteristicUUID,
+            let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) {
+        
+            log("Found target service: \(serviceUUID.uuidString), discovering characteristics...")
+            peripheral.discoverCharacteristics([characteristicUUID], for: service)
+        } else {
+            // Original behavior for general service discovery
+            self.servicesCount = peripheral.services?.count ?? 0
+            self.servicesDiscovered = 0
+            self.characteristicsCount = 0
+            self.characteristicsDiscovered = 0
+        
+            for service in peripheral.services ?? [] {
+                peripheral.discoverCharacteristics(nil, for: service)
+            }
         }
     }
 
@@ -69,15 +86,44 @@ class Device: NSObject, CBPeripheralDelegate {
         didDiscoverCharacteristicsFor service: CBService,
         error: Error?
     ) {
+        if let error = error {
+            log("Error discovering characteristics: \(error.localizedDescription)")
+            return
+        }
+    
+        log("Discovered characteristics for service \(service.uuid.uuidString): \(service.characteristics?.map { $0.uuid.uuidString } ?? [])")
+    
+        // Check if this is the service we're interested in for notifications
+        if let targetServiceUUID = targetServiceUUID,
+           let targetCharacteristicUUID = targetCharacteristicUUID,
+           service.uuid == targetServiceUUID {
+        
+            if let characteristic = service.characteristics?.first(where: { $0.uuid == targetCharacteristicUUID }) {
+                log("Found target characteristic: \(targetCharacteristicUUID.uuidString), setting notification: \(pendingNotificationEnable)")
+            
+                // Set up notification for this characteristic
+                peripheral.setNotifyValue(pendingNotificationEnable, for: characteristic)
+            
+                // Reset the target UUIDs
+                // self.targetServiceUUID = nil
+                // self.targetCharacteristicUUID = nil
+                return
+            } else {
+                log("Target characteristic \(targetCharacteristicUUID.uuidString) not found")
+            }
+        }
+    
+        // Original behavior for general characteristic discovery
         self.servicesDiscovered += 1
-        log("didDiscoverCharacteristicsFor", self.servicesDiscovered, self.servicesCount)
         self.characteristicsCount += service.characteristics?.count ?? 0
+    
         for characteristic in service.characteristics ?? [] {
             peripheral.discoverDescriptors(for: characteristic)
         }
-        // if the last service does not have characteristics, resolve the connect call now
+    
+        // If this was the last service, resolve the connection
         if self.servicesDiscovered >= self.servicesCount && self.characteristicsDiscovered >= self.characteristicsCount {
-            self.resolve("connect", "Connection successful.")
+            // self.resolve("connect", "Connection successful.")
             self.resolve("discoverServices", "Services discovered.")
         }
     }
@@ -328,49 +374,40 @@ class Device: NSObject, CBPeripheralDelegate {
     ) {
         let key = "setNotifications|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
         let notifyKey = "notification|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
+        // Check pending state
+        if notificationPending[key] == true {
+            self.reject(key, "Notification request is pending for this characteristic.")
+            return
+        }
+        notificationPending[key] = true
+
+        log("Setting up notifications: \(enable) for service: \(serviceUUID.uuidString), characteristic: \(characteristicUUID.uuidString)")
+
         self.callbackMap[key] = callback
-        if notifyCallback != nil {
+        if let notifyCallback = notifyCallback {
             self.callbackMap[notifyKey] = notifyCallback
         }
-        // Ensure peripheral is connected
-        guard self.peripheral.state == .connected else {
-            self.reject(key, "Peripheral not connected. State: \(self.peripheral.state)")
-            return
+    
+        // Store the target UUIDs and notification state
+        self.targetServiceUUID = serviceUUID
+        self.targetCharacteristicUUID = characteristicUUID
+        self.pendingNotificationEnable = enable
+    
+        // Start service discovery
+        if peripheral.state == .connected {
+            log("Starting service discovery for UUID: \(serviceUUID.uuidString)")
+            peripheral.discoverServices([serviceUUID])
+        } else {
+            self.reject(key, "Peripheral is not connected. Current state: \(peripheral.state.description)")
+            notificationPending[key] = false
         }
-        
-        // Get service first
-        guard let service = self.peripheral.services?.first(where: { $0.uuid == serviceUUID }) else {
-            self.reject(key, "Service not found. Available services: \(self.peripheral.services?.map { $0.uuid.uuidString } ?? [])")
-            return
+        // Hủy pending nếu quá timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+            if self.notificationPending[key] == true {
+                self.notificationPending[key] = false
+                self.reject(key, "Set notifications timeout.")
+            }
         }
-        
-        // Get characteristic from service
-        guard let characteristic = service.characteristics?.first(where: { $0.uuid == characteristicUUID }) else {
-            self.reject(key, "Characteristic not found. Available characteristics: \(service.characteristics?.map { $0.uuid.uuidString } ?? [])")
-            return
-        }
-        
-        log("Set notifications", enable)
-        log("Service UUID: \(service.uuid)")
-        log("Characteristic UUID: \(characteristic.uuid)")
-        log("Characteristic properties: \(characteristic.properties) (raw: \(characteristic.properties.rawValue))")
-        
-        // Check if characteristic supports notifications or indications
-        let supportsNotify = characteristic.properties.contains(.notify)
-        let supportsIndicate = characteristic.properties.contains(.indicate)
-        log("Supports notify: \(supportsNotify), indicate: \(supportsIndicate)")
-        
-        if !supportsNotify && !supportsIndicate {
-            self.reject(key, "Characteristic does not support notifications or indications")
-            return
-        }
-        
-        // Check if characteristic is notifying (current state)
-        log("Current isNotifying state: \(characteristic.isNotifying)")
-        
-        log("About to call setNotifyValue(\(enable))...")
-        self.peripheral.setNotifyValue(enable, for: characteristic)
-        self.setTimeout(key, "Set notifications timeout.", timeout)
     }
 
     func peripheral(
@@ -378,13 +415,22 @@ class Device: NSObject, CBPeripheralDelegate {
         didUpdateNotificationStateFor characteristic: CBCharacteristic,
         error: Error?
     ) {
-        let key = self.getKey("setNotifications", characteristic)
-        if error != nil {
-            log("didUpdateNotificationStateFor: \(String(describing: error))")
-            self.reject(key, error!.localizedDescription)
+        // Tạo key dựa trên targetServiceUUID và targetCharacteristicUUID đã lưu
+        guard let serviceUUID = characteristic.service?.uuid else {
+            log("Error: Service for characteristic \(characteristic.uuid.uuidString) is nil in didUpdateNotificationStateFor.")
             return
         }
-        self.resolve(key, "Successfully set notifications.")
+
+        let characteristicUUID = characteristic.uuid
+        let key = "setNotifications|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
+        notificationPending[key] = false
+        if let error = error {
+            self.reject(key, "Failed to update notification state: \(error.localizedDescription)")
+            return
+        }
+    
+        // Notification/indication set up successfully
+        self.resolve(key, "Successfully set notification state to \(characteristic.isNotifying)")
     }
 
     private func getKey(
