@@ -105,7 +105,7 @@ class Device: NSObject, CBPeripheralDelegate {
                 // peripheral.setNotifyValue(pendingNotificationEnable, for: characteristic)
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    peripheral.setNotifyValue(pendingNotificationEnable, for: characteristic)
+                    peripheral.setNotifyValue(self.pendingNotificationEnable, for: characteristic)
                 }
             
                 // Reset the target UUIDs
