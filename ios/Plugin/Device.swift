@@ -398,7 +398,7 @@ class Device: NSObject, CBPeripheralDelegate {
             log("Starting service discovery for UUID: \(serviceUUID.uuidString)")
             peripheral.discoverServices([serviceUUID])
         } else {
-            self.reject(key, "Peripheral is not connected. Current state: \(peripheral.state.description)")
+            self.reject(key, "Peripheral is not connected. Current state: \(peripheral.state.rawValue)")
             notificationPending[key] = false
         }
         // Hủy pending nếu quá timeout
