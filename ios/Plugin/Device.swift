@@ -402,7 +402,7 @@ class Device: NSObject, CBPeripheralDelegate {
             notificationPending[key] = false
         }
         // Hủy pending nếu quá timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             if self.notificationPending[key] == true {
                 self.notificationPending[key] = false
                 self.reject(key, "Set notifications timeout.")
