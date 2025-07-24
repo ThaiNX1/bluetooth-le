@@ -142,9 +142,9 @@ class Device: NSObject, CBPeripheralDelegate {
         self.servicesDiscovered += 1
         self.characteristicsCount += service.characteristics?.count ?? 0
 
-        for characteristic in service.characteristics ?? [] {
-            peripheral.discoverDescriptors(for: characteristic)
-        }
+        // for characteristic in service.characteristics ?? [] {
+        //     peripheral.discoverDescriptors(for: characteristic)
+        // }
 
         // Nếu đây là service cuối cùng, giải quyết kết nối (hoặc discoverServices)
         // Cần xem xét lại logic này nếu bạn chỉ muốn discover cho setNotifications
