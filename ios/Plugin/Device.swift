@@ -62,11 +62,12 @@ class Device: NSObject, CBPeripheralDelegate {
             return
         }
         // If we're looking for a specific service to set up notifications
-        if let serviceUUID = targetServiceUUID,
+        if  let serviceUUID = targetServiceUUID,
+            let characteristicUUID = targetCharacteristicUUID,
             let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) {
         
             log("Found target service: \(serviceUUID.uuidString), discovering characteristics...")
-            peripheral.discoverCharacteristics([targetCharacteristicUUID!], for: service)
+            peripheral.discoverCharacteristics([characteristicUUID], for: service)
         } else {
             // Original behavior for general service discovery
             self.servicesCount = peripheral.services?.count ?? 0
@@ -98,17 +99,17 @@ class Device: NSObject, CBPeripheralDelegate {
            service.uuid == targetServiceUUID {
         
             if let characteristic = service.characteristics?.first(where: { $0.uuid == targetCharacteristicUUID }) {
-            log("Found target characteristic: \(targetCharacteristicUUID.uuidString), setting notification: \(pendingNotificationEnable)")
+                log("Found target characteristic: \(targetCharacteristicUUID.uuidString), setting notification: \(pendingNotificationEnable)")
             
-            // Set up notification for this characteristic
-            peripheral.setNotifyValue(pendingNotificationEnable, for: characteristic)
+                // Set up notification for this characteristic
+                peripheral.setNotifyValue(pendingNotificationEnable, for: characteristic)
             
-            // Reset the target UUIDs
-            self.targetServiceUUID = nil
-            self.targetCharacteristicUUID = nil
-            return
+                // Reset the target UUIDs
+                // self.targetServiceUUID = nil
+                // self.targetCharacteristicUUID = nil
+                return
             } else {
-            log("Target characteristic \(targetCharacteristicUUID.uuidString) not found")
+                log("Target characteristic \(targetCharacteristicUUID.uuidString) not found")
             }
         }
     
@@ -122,7 +123,7 @@ class Device: NSObject, CBPeripheralDelegate {
     
         // If this was the last service, resolve the connection
         if self.servicesDiscovered >= self.servicesCount && self.characteristicsDiscovered >= self.characteristicsCount {
-            self.resolve("connect", "Connection successful.")
+            // self.resolve("connect", "Connection successful.")
             self.resolve("discoverServices", "Services discovered.")
         }
     }
@@ -397,7 +398,7 @@ class Device: NSObject, CBPeripheralDelegate {
             log("Starting service discovery for UUID: \(serviceUUID.uuidString)")
             peripheral.discoverServices([serviceUUID])
         } else {
-            self.reject(key, "Peripheral is not connected. Current state: \(peripheral.state.rawValue)")
+            self.reject(key, "Peripheral is not connected. Current state: \(peripheral.state.description)")
             notificationPending[key] = false
         }
         // Hủy pending nếu quá timeout
@@ -415,10 +416,12 @@ class Device: NSObject, CBPeripheralDelegate {
         error: Error?
     ) {
         // Tạo key dựa trên targetServiceUUID và targetCharacteristicUUID đã lưu
-        guard let serviceUUID = self.targetServiceUUID, let characteristicUUID = self.targetCharacteristicUUID else {
-            log("targetServiceUUID or targetCharacteristicUUID is nil")
+        guard let serviceUUID = characteristic.service?.uuid else {
+            log("Error: Service for characteristic \(characteristic.uuid.uuidString) is nil in didUpdateNotificationStateFor.")
             return
         }
+
+        let characteristicUUID = characteristic.uuid
         let key = "setNotifications|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
         notificationPending[key] = false
         if let error = error {
@@ -428,8 +431,6 @@ class Device: NSObject, CBPeripheralDelegate {
     
         // Notification/indication set up successfully
         self.resolve(key, "Successfully set notification state to \(characteristic.isNotifying)")
-        self.targetServiceUUID = nil
-        self.targetCharacteristicUUID = nil
     }
 
     private func getKey(
