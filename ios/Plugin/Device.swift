@@ -415,6 +415,7 @@ class Device: NSObject, CBPeripheralDelegate {
 
         self.callbackMap[key] = callback // Lưu callback cho việc thiết lập
         if let notifyCallback = notifyCallback {
+            log("Setting up notify callback for service: \(serviceUUID.uuidString), characteristic: \(characteristicUUID.uuidString)")
             self.callbackMap[notifyKey] = notifyCallback // Lưu callback cho dữ liệu notify
         }
 
