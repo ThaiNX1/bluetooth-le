@@ -458,7 +458,7 @@ class Device: NSObject, CBPeripheralDelegate {
 
         let characteristicUUID = characteristic.uuid
         let key = "setNotifications|\(serviceUUID.uuidString.lowercased())|\(characteristicUUID.uuidString.lowercased())"
-
+        log("==> didUpdateNotificationStateFor fired for service: \(characteristic.service?.uuid.uuidString ?? "nil"), char: \(characteristic.uuid.uuidString), error: \(String(describing: error)), isNotifying: \(characteristic.isNotifying)")
         // RẤT QUAN TRỌNG: Xóa trạng thái pending và hủy timeout ngay khi nhận được phản hồi
         self.notificationPending[key] = false
         self.timeoutMap[key]?.cancel() // Hủy timeout chính
