@@ -475,12 +475,17 @@ public class BluetoothLe: CAPPlugin {
             characteristic.1,
             true, {(_, value) in
                 let key = "notification|\(device.getId())|\(characteristic.0.uuidString.lowercased())|\(characteristic.1.uuidString.lowercased())"
+                log("Notification received key: \(key), value: \(value)")
                 self.notifyListeners(key, data: ["value": value])
             },
             timeout, {(success, value) in
                 if success {
+                    log("✅ [BLE] Start notification success for serviceUUID \(characteristic.0.uuidString)")
+                    log("✅ [BLE] Start notification success for characteristicUUID \(characteristic.1.uuidString)")
                     call.resolve()
                 } else {
+                    log("❌ [BLE] Start notification failed for serviceUUID \(characteristic.0.uuidString)")
+                    log("❌ [BLE] Start notification failed for characteristicUUID \(characteristic.1.uuidString)")
                     call.reject(value)
                 }
             })
