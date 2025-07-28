@@ -248,6 +248,7 @@ class Device: NSObject, CBPeripheralDelegate {
             self.reject(key, "Characteristic not found.")
             return
         }
+        log("Set notifications characteristic: \(characteristic)")
         log("Set notifications", enable)
         self.peripheral.setNotifyValue(enable, for: characteristic)
         self.setTimeout(key, "Set notifications timeout.", timeout)
