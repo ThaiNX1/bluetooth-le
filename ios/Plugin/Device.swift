@@ -191,6 +191,7 @@ class Device: NSObject, CBPeripheralDelegate {
         didUpdateValueFor characteristic: CBCharacteristic,
         error: Error?
     ) {
+        log("didUpdateValueFor", characteristic)
         let key = self.getKey("read", characteristic)
         let notifyKey = self.getKey("notification", characteristic)
         if error != nil {
